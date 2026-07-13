@@ -1,0 +1,119 @@
+# Build Prompt: RSVP Focus-Reader PWA
+
+> **How to use this:** Paste the whole thing into a coding agent (Claude Code, Cursor, etc.). Build Phase 1 completely and get it running as an installable, offline PWA *before* touching the stats phase.
+
+---
+
+## Product summary
+
+An installable, offline-capable Progressive Web App that reads text to me one word at a time using the **RSVP** method (Rapid Serial Visual Presentation). Words flash in a fixed position so my eyes don't move, which lets me read faster. I import a book or paste text, set a words-per-minute speed, hit play, and read.
+
+Single user (me). **No accounts, no login, no payments, no subscription.** All data lives on-device.
+
+**Primary device is a phone.** I read on my phone, held in portrait, often one-handed. Optimise every screen and interaction for that first. It should still be usable on a laptop, but the phone experience is what matters.
+
+> **Device / import reality (important):** This is local-first with no backend, so a book imported on one device stays on that device — there is no cross-device sync. I import books **directly on my phone** using the OS file picker (Files app / iCloud Drive / Google Drive / Downloads all work). Do not assume a "upload on laptop, read on phone" flow — that would require a backend, which is out of scope. The file picker must work well on mobile.
+
+## Platform
+
+- Progressive Web App: installable to home screen, works offline. **Phone-first**, laptop-secondary.
+- Use **`vite-plugin-pwa`** for the manifest + service worker.
+- **Local-first**: all data in the browser (IndexedDB). The app must open instantly and work with no network.
+- Portrait-first layout. Must handle orientation changes gracefully and respect device safe areas (notch, home indicator) via `env(safe-area-inset-*)`.
+
+## Recommended stack
+
+- **React + Vite + TypeScript**
+- **Tailwind CSS**
+- **IndexedDB** for storage — use the `idb` wrapper, not raw IndexedDB.
+- **EPUB parsing:** `epubjs`, or the lighter-weight combo of `jszip` + the browser's `DOMParser`.
+- **PDF parsing:** `pdfjs-dist` (Mozilla PDF.js), client-side only.
+- No backend. No server. No auth. If you're reaching for Supabase or an API, stop — this app doesn't need one.
+
+---
+
+## PHASE 1 — Reader engine + import (build, ship, and verify offline before Phase 2)
+
+This is the whole product. Text goes in, the RSVP reader does its job, and I can reopen anything and resume. Don't rush the engine to get to stats.
+
+### Import (all client-side — nothing is ever uploaded anywhere)
+
+Support these input methods, in priority order:
+
+1. **EPUB (primary format).** Unzip the file, read the OPF spine to get correct reading order, load each XHTML document in spine order, strip tags to plain text, and concatenate into one linear token stream. Pull the book title and author from the EPUB metadata for the library. EPUB is the cleanest source because the text is already structured — treat it as the main path and make it feel first-class.
+2. **PDF (fallback, with caveats).** Extract text page by page with `pdfjs-dist`. **The messy parts you must handle:** de-hyphenate words split across line breaks (`exam-\nple` → `example`), collapse hard line breaks inside paragraphs into spaces, and strip obvious repeated headers/footers/page numbers where feasible. This will never be as clean as EPUB — get it good enough to read, and don't block the build trying to make it perfect.
+3. **`.txt` file import** (trivial).
+4. **Paste** — a textarea + "Read" button for quick throwaway text.
+
+Every imported document is saved to IndexedDB with its title, author (if known), tokenized text, and last reading position.
+
+### Library
+- A list screen showing all saved documents (title, author, % progress).
+- Tapping one opens the reader and **resumes exactly where I left off**.
+- Delete a document.
+- Persist current document + reading position so a refresh never loses my place.
+
+### The reader (the core screen — designed for a phone in portrait)
+- Displays **one word at a time**, centered, large, in a fixed position. Word font must be big enough to read comfortably at arm's length on a phone.
+- **ORP alignment (do not skip this — it's the point of RSVP):** each word has an Optimal Recognition Point, a pivot letter slightly left of center. Align that pivot to a **fixed horizontal anchor** and render it in an accent colour, so the pivot stays put while the word changes around it. Word length must not shift the pivot. ORP by word length: 1 char → index 0; 2–5 → 1; 6–9 → 2; 10–13 → 3; 14+ → 4.
+- Show a thin static guide (small tick above and below the anchor) so the eye locks on.
+- Clean, high-contrast, zero clutter. No scrolling, no page turns.
+- **Keep the screen awake while playing** using the Wake Lock API — otherwise the phone dims and sleeps mid-read, which kills the whole experience. Release the lock on pause.
+- Disable text selection, pinch-zoom, and double-tap-zoom on the reader surface (`user-select: none`, `touch-action: manipulation`) so gestures don't accidentally trigger browser behaviour.
+
+### Phone-first controls (thumb-reachable)
+- **Tap anywhere on the reading area to play/pause** — the whole word zone is the tap target, not a small button. This is the primary control.
+- **Swipe left/right on the reading area to seek** (rewind/advance in small increments). Swipe should feel like scrubbing.
+- Place all persistent controls (WPM, restart, progress) in a **bottom bar within thumb reach**, not at the top of the screen. Respect the safe-area inset so controls sit above the home indicator.
+- WPM control: a stepper with large +/- buttons (min 44×44px touch targets) plus an optional slider. Range 100–1000, default 300. Persist last-used WPM.
+- Restart button and a "back to library" control.
+- Progress bar / scrubber showing position; dragging it seeks. Make the drag handle finger-sized.
+- Live readout: "word 240 / 1,830" and estimated time remaining at current WPM.
+- Keyboard shortcuts (spacebar = play/pause, arrows = seek/speed) as a **secondary** nicety for laptop use — never the only way to do something.
+- All tap targets across the app must be at least 44×44px.
+
+### Timing engine (this is where cheap RSVP clones feel bad — get it right)
+Base delay per word = `60000 / WPM` ms, then apply modifiers on top:
+- **Long words** get extra time (add time per character beyond ~6).
+- **Punctuation pauses:** longer pause after `. ! ?` (sentence end), shorter after `, ; :`.
+- **Paragraph breaks** get a clear pause.
+- Put all of this in one well-commented `delayForToken(token, wpm)` function so it's easy to tune. Expose a "smart timing" on/off toggle.
+
+### Reader settings (persist all)
+- Font size, font family (a couple of readable options).
+- Light / dark theme.
+- WPM.
+- Smart timing on/off.
+- Optional pause-length multiplier.
+
+### PWA requirements
+- Valid `manifest.webmanifest` (name, 192/512 icons, `display: standalone`, theme colour, `orientation: portrait`). Generate simple placeholder icons if none supplied.
+- Service worker via `vite-plugin-pwa` precaching the app shell so it launches offline.
+- Set `viewport-fit=cover` in the viewport meta so safe-area insets work on notched phones.
+- **iOS caveats to know:** on iPhone, full standalone behaviour and reliable offline only happen once the app is **installed to the home screen** — Safari tab behaviour is more limited. The Wake Lock API works in modern iOS Safari but test it on the actual device, since screen-sleep behaviour is the most likely thing to break. Don't rely on push notifications (not needed here anyway).
+- **Test the whole thing on a real phone, not just a desktop browser's mobile emulator.** Emulators lie about touch, safe areas, and wake lock.
+- **Ship Phase 1 as an installed PWA on a phone and confirm it opens and reads a saved book with the network off before moving on.**
+
+---
+
+## PHASE 2 — Stats (only after Phase 1 works offline)
+
+- Track per session: words read, average WPM, duration, date.
+- A stats screen: total words read, current/average WPM, a simple streak (days with ≥1 session), and a small chart of WPM over time.
+- Honest and local — just numbers computed from stored session records. No gamification cruft.
+
+---
+
+## Explicitly OUT of scope (do not build)
+
+- No login, accounts, or profiles.
+- No subscription, paywall, or payments.
+- No cloud sync, backend, or database server. Cross-device sync is a later problem, not part of this build.
+- No social features, sharing, or recommendations.
+
+---
+
+## Build order recap
+
+1. **Phase 1:** import (EPUB primary, then PDF/txt/paste) → library with resume → RSVP reader with ORP + smart timing + controls, installable and working offline. Verify it reads a saved book offline, then ship.
+2. **Phase 2:** session stats.

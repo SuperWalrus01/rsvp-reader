@@ -1,0 +1,58 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-accent: #ef4444;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  /* Kill double-tap zoom everywhere; the reader surface uses touch-action:none. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Big, comfortable native slider thumbs (finger-sized drag handles). */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 44px; /* full-height touch target */
+  background: transparent;
+  cursor: pointer;
+}
+input[type='range']::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--track, #334155);
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: none;
+  margin-top: -11px;
+}
+input[type='range']::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--track, #334155);
+}
+input[type='range']::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: none;
+}
