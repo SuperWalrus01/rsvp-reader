@@ -29,11 +29,20 @@ input[type='range'] {
   height: 44px; /* full-height touch target */
   background: transparent;
   cursor: pointer;
+  --track: #cbd5e1; /* unfilled portion (light theme) */
+}
+.dark input[type='range'] {
+  --track: #334155;
 }
 input[type='range']::-webkit-slider-runnable-track {
   height: 6px;
   border-radius: 3px;
-  background: var(--track, #334155);
+  /* Fill up to the current position so the scrubber reads as a progress bar. */
+  background: linear-gradient(
+    to right,
+    #ef4444 var(--fill, 0%),
+    var(--track, #334155) var(--fill, 0%)
+  );
 }
 input[type='range']::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -47,7 +56,11 @@ input[type='range']::-webkit-slider-thumb {
 input[type='range']::-moz-range-track {
   height: 6px;
   border-radius: 3px;
-  background: var(--track, #334155);
+  background: linear-gradient(
+    to right,
+    #ef4444 var(--fill, 0%),
+    var(--track, #334155) var(--fill, 0%)
+  );
 }
 input[type='range']::-moz-range-thumb {
   width: 28px;

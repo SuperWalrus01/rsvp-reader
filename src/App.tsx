@@ -14,7 +14,9 @@ export default function App() {
   const { settings, update } = useSettings()
   const [screen, setScreen] = useState<Screen>({ name: 'library' })
 
-  // A refresh never loses your place: reopen the doc that was being read.
+  // Remember where you left off: on launch, reopen the last book you read at
+  // its saved word. getDoc reads the latest position from IndexedDB, so a
+  // refresh or a cold app start both drop you back exactly where you were.
   useEffect(() => {
     const lastId = localStorage.getItem(LAST_DOC_KEY)
     if (!lastId) return
@@ -27,10 +29,9 @@ export default function App() {
     localStorage.setItem(LAST_DOC_KEY, doc.id)
     setScreen({ name: 'reader', doc })
   }
-  const backToLibrary = () => {
-    localStorage.removeItem(LAST_DOC_KEY)
-    setScreen({ name: 'library' })
-  }
+  // Going back to the library is a one-tap trip within the session; the
+  // last-read book is still remembered for the next launch (not cleared here).
+  const backToLibrary = () => setScreen({ name: 'library' })
 
   switch (screen.name) {
     case 'reader':

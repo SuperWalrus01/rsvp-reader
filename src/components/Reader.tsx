@@ -106,8 +106,12 @@ export function Reader({ doc, settings, updateSettings, onBack }: {
       if (document.visibilityState === 'hidden') persist()
     }
     document.addEventListener('visibilitychange', onHide)
+    // pagehide is the reliable "app is going away" signal on iOS Safari/PWAs,
+    // where visibilitychange doesn't always fire before the app is frozen.
+    window.addEventListener('pagehide', persist)
     return () => {
       document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('pagehide', persist)
       persist() // unmount (back to library, etc.)
       if (playingRef.current) flushRef.current() // save an in-progress sitting
     }
@@ -176,6 +180,8 @@ export function Reader({ doc, settings, updateSettings, onBack }: {
   const word = tokens ? tokenWord(tokens[index] ?? '') : ''
   const remaining = estimateRemainingMs(total - index, settings.wpm, settings.smartTiming)
   const finished = tokens !== null && index >= total - 1 && !playing
+  const progress = total > 1 ? index / (total - 1) : 0
+  const pct = Math.round(progress * 100)
 
   return (
     <div className="flex h-full flex-col bg-white text-slate-900 select-none dark:bg-[#0b1220] dark:text-slate-100">
@@ -188,6 +194,17 @@ export function Reader({ doc, settings, updateSettings, onBack }: {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
       >
+        {/* slim reading-progress bar, glanceable while playing (below the notch) */}
+        <div
+          className="absolute inset-x-0 h-[3px] bg-black/5 dark:bg-white/10"
+          style={{ top: 'env(safe-area-inset-top)' }}
+        >
+          <div
+            className="h-full bg-accent transition-[width] duration-150 ease-out"
+            style={{ width: `${progress * 100}%` }}
+          />
+        </div>
+
         {/* static guide ticks above/below the anchor so the eye locks on */}
         <div
           className="absolute top-[calc(50%-3.2em)] h-5 w-0.5 -translate-x-1/2 bg-slate-300 dark:bg-slate-600"
@@ -231,11 +248,13 @@ export function Reader({ doc, settings, updateSettings, onBack }: {
           value={index}
           onChange={(e) => setIndex(clamp(Number(e.target.value)))}
           className="w-full"
+          style={{ '--fill': `${pct}%` } as React.CSSProperties}
           aria-label="Reading position"
         />
         <div className="flex items-baseline justify-between text-xs text-slate-500 dark:text-slate-400">
           <span>
             word {(index + 1).toLocaleString()} / {total.toLocaleString()}
+            <span className="ml-1 tabular-nums">· {pct}%</span>
           </span>
           <span>{formatEta(remaining)} left</span>
         </div>
