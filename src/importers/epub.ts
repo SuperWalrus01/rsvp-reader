@@ -84,34 +84,94 @@ const BLOCK_TAGS = new Set([
   'BR', 'HR',
 ])
 const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'HEAD', 'TITLE', 'SVG', 'IMG', 'NAV'])
+// Body-text blocks whose fragments may be rejoined into one logical paragraph.
+const FLOW_TAGS = new Set(['P', 'DIV'])
 
-/** Strip tags, inserting paragraph breaks at block-element boundaries. */
+interface Block {
+  tag: string
+  text: string
+}
+
+/**
+ * Convert a chapter's XHTML to plain text, one paragraph per *logical*
+ * paragraph of the original book.
+ *
+ * Many EPUBs — especially ones converted from PDF or print — split a single
+ * paragraph across several <p> elements, one per printed line. Treating every
+ * block as a hard paragraph break would then chop sentences into one-line
+ * fragments. So we rejoin a block onto the previous one when the previous
+ * block didn't end a sentence and this one continues in lower case, which
+ * reconstructs the paragraphs while leaving headings, list items and
+ * genuinely new paragraphs untouched.
+ */
 export function htmlToText(html: string): string {
   let doc = new DOMParser().parseFromString(html, 'application/xhtml+xml')
   if (doc.querySelector('parsererror')) {
     doc = new DOMParser().parseFromString(html, 'text/html')
   }
-  const out: string[] = []
-  walk(doc.body ?? doc.documentElement, out)
-  return out
-    .join('')
-    .replace(/[ \t\r]+/g, ' ')
-    .replace(/ ?\n ?/g, '\n')
-    .replace(/\n{2,}/g, '\n\n')
-    .trim()
+  const blocks: Block[] = []
+  collectBlocks(doc.body ?? doc.documentElement, blocks)
+  return mergeFragments(blocks)
+    .map((b) => b.text)
+    .join('\n\n')
 }
 
-function walk(node: Node | null, out: string[]) {
-  if (!node) return
-  if (node.nodeType === Node.TEXT_NODE) {
-    out.push(node.textContent ?? '')
-    return
+/** Flatten the DOM into text blocks, one per block-level element. */
+function collectBlocks(root: Node | null, blocks: Block[]) {
+  let buf: string[] = []
+  let bufTag: string | null = null
+  const flush = () => {
+    const text = buf.join('').replace(/\s+/g, ' ').trim()
+    if (text) blocks.push({ tag: bufTag ?? 'P', text })
+    buf = []
+    bufTag = null
   }
-  if (node.nodeType !== Node.ELEMENT_NODE) return
-  const tag = (node as Element).tagName.toUpperCase()
-  if (SKIP_TAGS.has(tag)) return
-  const block = BLOCK_TAGS.has(tag)
-  if (block) out.push('\n\n')
-  for (const child of Array.from(node.childNodes)) walk(child, out)
-  if (block) out.push('\n\n')
+  const walk = (node: Node | null, blockTag: string) => {
+    if (!node) return
+    if (node.nodeType === Node.TEXT_NODE) {
+      const t = node.textContent
+      if (t) {
+        if (buf.length === 0) bufTag = blockTag
+        buf.push(t)
+      }
+      return
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return
+    const tag = (node as Element).tagName.toUpperCase()
+    if (SKIP_TAGS.has(tag)) return
+    if (BLOCK_TAGS.has(tag)) {
+      flush()
+      for (const child of Array.from(node.childNodes)) walk(child, tag)
+      flush()
+    } else {
+      for (const child of Array.from(node.childNodes)) walk(child, blockTag)
+    }
+  }
+  walk(root, 'P')
+  flush()
+}
+
+/** True if the text ends a sentence, so the next block is a new paragraph. */
+function endsSentence(text: string): boolean {
+  return /[.!?…:;)"'”’»\]]\s*$/.test(text)
+}
+
+/** Rejoin print-reflow line fragments back into whole paragraphs. */
+function mergeFragments(blocks: Block[]): Block[] {
+  const out: Block[] = []
+  for (const b of blocks) {
+    const prev = out[out.length - 1]
+    if (
+      prev &&
+      FLOW_TAGS.has(prev.tag) &&
+      FLOW_TAGS.has(b.tag) &&
+      !endsSentence(prev.text) &&
+      /^\p{Ll}/u.test(b.text)
+    ) {
+      prev.text += ' ' + b.text
+    } else {
+      out.push({ ...b })
+    }
+  }
+  return out
 }
