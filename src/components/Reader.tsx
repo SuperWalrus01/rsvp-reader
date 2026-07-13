@@ -6,6 +6,7 @@ import { tokenWord } from '../tokenize'
 import { useWakeLock } from '../hooks/useWakeLock'
 import { OrpWord } from './OrpWord'
 import { SettingsSheet } from './SettingsSheet'
+import { TextView } from './TextView'
 
 const ANCHOR = '38%' // fixed horizontal anchor the ORP pivot locks onto
 const FONT_PX = { s: 32, m: 40, l: 48, xl: 58 } as const
@@ -20,6 +21,7 @@ export function Reader({ doc, settings, updateSettings, onBack }: {
   const [index, setIndex] = useState(doc.position)
   const [playing, setPlaying] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showText, setShowText] = useState(false)
 
   useWakeLock(playing)
 
@@ -205,6 +207,23 @@ export function Reader({ doc, settings, updateSettings, onBack }: {
           />
         </div>
 
+        {/* open the full-text paragraph view (doesn't trigger play/pause) */}
+        <button
+          aria-label="Text view"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation()
+            setPlayingTracked(false)
+            setShowText(true)
+          }}
+          className="absolute right-3 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-black/5 text-slate-500 active:bg-black/10 dark:bg-white/10 dark:text-slate-300 dark:active:bg-white/20"
+          style={{ top: 'calc(env(safe-area-inset-top) + 12px)' }}
+        >
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M4 6h16M4 12h16M4 18h11" strokeLinecap="round" />
+          </svg>
+        </button>
+
         {/* static guide ticks above/below the anchor so the eye locks on */}
         <div
           className="absolute top-[calc(50%-3.2em)] h-5 w-0.5 -translate-x-1/2 bg-slate-300 dark:bg-slate-600"
@@ -322,6 +341,19 @@ export function Reader({ doc, settings, updateSettings, onBack }: {
           settings={settings}
           updateSettings={updateSettings}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {showText && tokens && (
+        <TextView
+          tokens={tokens}
+          index={index}
+          serif={settings.fontFamily === 'serif'}
+          onJump={(i) => {
+            setIndex(clamp(i))
+            setShowText(false)
+          }}
+          onClose={() => setShowText(false)}
         />
       )}
     </div>
