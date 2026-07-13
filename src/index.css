@@ -7,9 +7,25 @@
 }
 
 html,
-body,
-#root {
+body {
   height: 100%;
+  /* Paint the canvas with the theme colour so any safe-area / viewport gap in a
+     standalone iOS PWA can never show through as a white strip. */
+  background: #ffffff;
+}
+html.dark,
+html.dark body {
+  background: #0b1220;
+}
+
+/* Pin the app to the visual viewport. In a standalone iOS PWA, height:100% /
+   100vh resolve a little short — leaving an unfilled gap below the UI and
+   pushing the bottom controls off-screen. Anchoring #root to the viewport
+   edges fills the screen edge-to-edge reliably; per-screen safe-area padding
+   keeps content clear of the notch and home indicator. */
+#root {
+  position: fixed;
+  inset: 0;
 }
 
 body {
